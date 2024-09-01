@@ -1,9 +1,10 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 import logging
 from flask_socketio import SocketIO, emit
 from flask_cors import CORS  # Importer CORS
+import requests
 
 app = Flask(__name__)
 CORS(app)  # Activer CORS pour toutes les routes
@@ -39,6 +40,9 @@ modes = [
     {'label': 'Games', 'active': False},
     {'label': 'Players', 'active': False}
 ]
+
+# Adresse IP du Raspberry Pi et URL du flux vidéo
+PI_VIDEO_STREAM_URL = "http://192.168.1.166:5000/video_feed"
 
 
 @socketio.on('change_mode')
@@ -138,6 +142,16 @@ def get_shocks_by_sensor(sensor_id):
 
     return jsonify(output)
 
+#Endpoint for video feed
+@app.route('/video_feed')
+def video_feed():
+    def generate():
+        with requests.get(PI_VIDEO_STREAM_URL, stream=True) as r:
+            for chunk in r.iter_content(chunk_size=1024):
+                if chunk:
+                    yield chunk
+
+    return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 if __name__ == '__main__':
     with app.app_context():
