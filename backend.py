@@ -7,6 +7,7 @@ from flask_cors import CORS  # Importer CORS
 import requests
 
 app = Flask(__name__)
+
 CORS(app)  # Activer CORS pour toutes les routes
 
 socketio = SocketIO(app, cors_allowed_origins="*")
@@ -14,14 +15,81 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 # Configuration de la base de données SQLite
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///shocks.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-db = SQLAlchemy(app)
+db = SQLAlchemy(app)  # <-- L'instance de SQLAlchemy est directement liée à l'application Flask
 
 # Configuration du logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Définition des modèles de base de données
+class Club(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    city = db.Column(db.String(100))
+    established_year = db.Column(db.Integer)
+    championships = db.relationship('Championship', backref='club', lazy=True)
+    players = db.relationship('Player', backref='club', lazy=True)
 
-# Définition du modèle de la base de données
+class Player(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    first_name = db.Column(db.String(100), nullable=False)
+    last_name = db.Column(db.String(100), nullable=False)
+    photo_url = db.Column(db.String(200))  # URL de la photo du joueur
+    rating = db.Column(db.Float)  # Note entre 0.5 et 3.5
+    position = db.Column(db.String(50))  # Position sur le terrain
+    club_id = db.Column(db.Integer, db.ForeignKey('club.id'), nullable=False)
+    player_championships = db.relationship('PlayerChampionshipStats', backref='player', lazy=True)
+
+class Championship(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    year = db.Column(db.Integer, nullable=False)
+    division = db.Column(db.String(10), nullable=False)  # Nationale I, II, III
+    champion_club_id = db.Column(db.Integer, db.ForeignKey('club.id'))  # Club qui a remporté le championnat
+    matches = db.relationship('Match', backref='championship', lazy=True)
+
+class Match(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    championship_id = db.Column(db.Integer, db.ForeignKey('championship.id'), nullable=False)
+    date = db.Column(db.DateTime, nullable=False)
+    team_1_id = db.Column(db.Integer, db.ForeignKey('club.id'), nullable=False)
+    team_2_id = db.Column(db.Integer, db.ForeignKey('club.id'), nullable=False)
+    team_1_score = db.Column(db.Integer)
+    team_2_score = db.Column(db.Integer)
+    player_stats = db.relationship('PlayerMatchStats', backref='match', lazy=True)
+
+class PlayerMatchStats(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    match_id = db.Column(db.Integer, db.ForeignKey('match.id'), nullable=False)
+    player_id = db.Column(db.Integer, db.ForeignKey('player.id'), nullable=False)
+    heart_rate = db.Column(db.Float)
+    temperature = db.Column(db.Float)
+    average_speed = db.Column(db.Float)
+    distance_covered = db.Column(db.Float)
+    position_rating = db.Column(db.Float)  # Note de positionnement
+    fatigue = db.Column(db.Boolean, default=False)
+
+class PlayerChampionshipStats(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    player_id = db.Column(db.Integer, db.ForeignKey('player.id'), nullable=False)
+    championship_id = db.Column(db.Integer, db.ForeignKey('championship.id'), nullable=False)
+    total_matches = db.Column(db.Integer, default=0)
+    total_distance_covered = db.Column(db.Float, default=0.0)
+    total_goals = db.Column(db.Integer, default=0)
+    average_heart_rate = db.Column(db.Float)
+    average_speed = db.Column(db.Float)
+    average_position_rating = db.Column(db.Float)
+    best_position_rating = db.Column(db.Float)
+    fatigue_count = db.Column(db.Integer, default=0)
+
+class Award(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.String(255))
+    year = db.Column(db.Integer, nullable=False)
+    recipient_club_id = db.Column(db.Integer, db.ForeignKey('club.id'))
+    recipient_player_id = db.Column(db.Integer, db.ForeignKey('player.id'))
+    championship_id = db.Column(db.Integer, db.ForeignKey('championship.id'), nullable=False)
+
 class ShockData(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     sensorID = db.Column(db.String(50), nullable=False)  # Ajout du champ sensorID
@@ -152,6 +220,100 @@ def video_feed():
                     yield chunk
 
     return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+
+#DB modifications :
+@app.route('/add_club', methods=['POST'])
+def add_club():
+    data = request.json
+    new_club = Club(name=data['name'], city=data['city'], established_year=data['established_year'])
+    db.session.add(new_club)
+    db.session.commit()
+    return jsonify({"message": "Club added successfully!"}), 201
+
+@app.route('/add_player', methods=['POST'])
+def add_player():
+    data = request.json
+    new_player = Player(
+        first_name=data['first_name'],
+        last_name=data['last_name'],
+        photo_url=data.get('photo_url', None),
+        rating=data.get('rating', None),
+        position=data.get('position', None),
+        club_id=data['club_id']
+    )
+    db.session.add(new_player)
+    db.session.commit()
+    return jsonify({"message": "Player added successfully!"}), 201
+
+@app.route('/add_championship', methods=['POST'])
+def add_championship():
+    data = request.json
+    new_championship = Championship(
+        year=data['year'],
+        division=data['division'],
+        champion_club_id=data.get('champion_club_id', None)
+    )
+    db.session.add(new_championship)
+    db.session.commit()
+    return jsonify({"message": "Championship added successfully!"}), 201
+
+@app.route('/add_match', methods=['POST'])
+def add_match():
+    data = request.json
+    new_match = Match(
+        championship_id=data['championship_id'],
+        date=datetime.strptime(data['date'], "%Y-%m-%d %H:%M:%S"),
+        team_1_id=data['team_1_id'],
+        team_2_id=data['team_2_id'],
+        team_1_score=data.get('team_1_score', None),
+        team_2_score=data.get('team_2_score', None)
+    )
+    db.session.add(new_match)
+    db.session.commit()
+    return jsonify({"message": "Match added successfully!"}), 201
+
+@app.route('/add_player_match_stats', methods=['POST'])
+def add_player_match_stats():
+    data = request.json
+    new_stats = PlayerMatchStats(
+        match_id=data['match_id'],
+        player_id=data['player_id'],
+        heart_rate=data.get('heart_rate', None),
+        temperature=data.get('temperature', None),
+        average_speed=data.get('average_speed', None),
+        distance_covered=data.get('distance_covered', None),
+        position_rating=data.get('position_rating', None),
+        fatigue=data.get('fatigue', False)
+    )
+    db.session.add(new_stats)
+    db.session.commit()
+    return jsonify({"message": "Player match stats added successfully!"}), 201
+
+@app.route('/clubs', methods=['GET'])
+def get_clubs():
+    clubs = Club.query.all()
+    output = [{'id': club.id, 'name': club.name, 'city': club.city, 'established_year': club.established_year} for club in clubs]
+    return jsonify(output)
+
+@app.route('/clubs/<int:club_id>/players', methods=['GET'])
+def get_players(club_id):
+    players = Player.query.filter_by(club_id=club_id).all()
+    output = [{'id': player.id, 'first_name': player.first_name, 'last_name': player.last_name, 'rating': player.rating} for player in players]
+    return jsonify(output)
+
+@app.route('/championships', methods=['GET'])
+def get_championships():
+    championships = Championship.query.all()
+    output = [{'id': champ.id, 'year': champ.year, 'division': champ.division} for champ in championships]
+    return jsonify(output)
+
+@app.route('/championships/<int:championship_id>/matches', methods=['GET'])
+def get_matches(championship_id):
+    matches = Match.query.filter_by(championship_id=championship_id).all()
+    output = [{'id': match.id, 'date': match.date.strftime("%Y-%m-%d %H:%M:%S"), 'team_1_score': match.team_1_score, 'team_2_score': match.team_2_score} for match in matches]
+    return jsonify(output)
+
 
 if __name__ == '__main__':
     with app.app_context():
