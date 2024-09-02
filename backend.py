@@ -1,10 +1,17 @@
+#Backend
 from flask import Flask, request, jsonify, Response
-from flask_sqlalchemy import SQLAlchemy
-from datetime import datetime
-import logging
 from flask_socketio import SocketIO, emit
 from flask_cors import CORS  # Importer CORS
 import requests
+
+#Database
+from flask_sqlalchemy import SQLAlchemy
+from dateutil.parser import parse
+#Utils
+from datetime import datetime
+import logging
+
+
 
 app = Flask(__name__)
 
@@ -55,7 +62,13 @@ class Match(db.Model):
     team_2_id = db.Column(db.Integer, db.ForeignKey('club.id'), nullable=False)
     team_1_score = db.Column(db.Integer)
     team_2_score = db.Column(db.Integer)
-    player_stats = db.relationship('PlayerMatchStats', backref='match', lazy=True)
+
+    # Relationships
+    team_1 = db.relationship('Club', foreign_keys=[team_1_id])
+    team_2 = db.relationship('Club', foreign_keys=[team_2_id])
+
+
+
 
 class PlayerMatchStats(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -106,11 +119,12 @@ class ShockData(db.Model):
 modes = [
     {'label': 'Current Game', 'active': True},
     {'label': 'Games', 'active': False},
-    {'label': 'Players', 'active': False}
+    {'label': 'Players', 'active': False},
+    {'label': 'Select Table', 'active': False}
 ]
 
 # Adresse IP du Raspberry Pi et URL du flux vidéo
-PI_VIDEO_STREAM_URL = "http://192.168.1.166:5000/video_feed"
+PI_VIDEO_STREAM_URL = "http://192.168.17.45:5000/video_feed"
 
 
 @socketio.on('change_mode')
@@ -223,17 +237,24 @@ def video_feed():
 
 
 #DB modifications :
+
 @app.route('/add_club', methods=['POST'])
 def add_club():
     data = request.json
-    new_club = Club(name=data['name'], city=data['city'], established_year=data['established_year'])
+    # Log the received data
+    logger.info(f"Received club data: {data}")
+    new_club = Club(name=data['name'], city=data.get('city'), established_year=data.get('established_year'))
     db.session.add(new_club)
     db.session.commit()
-    return jsonify({"message": "Club added successfully!"}), 201
+    return jsonify({"message": "Club added successfully!", "club_id": new_club.id}), 201
+
 
 @app.route('/add_player', methods=['POST'])
 def add_player():
     data = request.json
+    # Log the received data
+    logger.info(f"Received player data: {data}")
+
     new_player = Player(
         first_name=data['first_name'],
         last_name=data['last_name'],
@@ -246,9 +267,13 @@ def add_player():
     db.session.commit()
     return jsonify({"message": "Player added successfully!"}), 201
 
+
 @app.route('/add_championship', methods=['POST'])
 def add_championship():
     data = request.json
+    # Log the received data
+    logger.info(f"Received championship data: {data}")
+
     new_championship = Championship(
         year=data['year'],
         division=data['division'],
@@ -258,24 +283,44 @@ def add_championship():
     db.session.commit()
     return jsonify({"message": "Championship added successfully!"}), 201
 
+
 @app.route('/add_match', methods=['POST'])
 def add_match():
     data = request.json
+    logger.info(f"Received match data: {data}")
+
+    try:
+        # Using dateutil to parse date flexibly
+        match_date = parse(data['date'])
+    except ValueError as e:
+        logger.error(f"Date parsing error: {e}")
+        return jsonify({"error": "Invalid date format"}), 400
+
     new_match = Match(
-        championship_id=data['championship_id'],
-        date=datetime.strptime(data['date'], "%Y-%m-%d %H:%M:%S"),
+        championship_id=data.get('championship_id'),
+        date=match_date,
         team_1_id=data['team_1_id'],
         team_2_id=data['team_2_id'],
-        team_1_score=data.get('team_1_score', None),
-        team_2_score=data.get('team_2_score', None)
+        team_1_score=data.get('team_1_score', 0),  # Default score to 0 if not provided
+        team_2_score=data.get('team_2_score', 0)
     )
+
     db.session.add(new_match)
-    db.session.commit()
-    return jsonify({"message": "Match added successfully!"}), 201
+    try:
+        db.session.commit()
+        return jsonify({"message": "Match added successfully!"}), 201
+    except Exception as e:
+        logger.error(f"Database error: {e}")
+        db.session.rollback()
+        return jsonify({"error": "Database error"}), 500
+
 
 @app.route('/add_player_match_stats', methods=['POST'])
 def add_player_match_stats():
     data = request.json
+    # Log the received data
+    logger.info(f"Received player match stats data: {data}")
+
     new_stats = PlayerMatchStats(
         match_id=data['match_id'],
         player_id=data['player_id'],
@@ -290,6 +335,7 @@ def add_player_match_stats():
     db.session.commit()
     return jsonify({"message": "Player match stats added successfully!"}), 201
 
+
 @app.route('/clubs', methods=['GET'])
 def get_clubs():
     clubs = Club.query.all()
@@ -298,9 +344,33 @@ def get_clubs():
 
 @app.route('/clubs/<int:club_id>/players', methods=['GET'])
 def get_players(club_id):
+    logger.info(f"Fetching players for club_id: {club_id}")
+
     players = Player.query.filter_by(club_id=club_id).all()
-    output = [{'id': player.id, 'first_name': player.first_name, 'last_name': player.last_name, 'rating': player.rating} for player in players]
+    club_name = Club.query.filter_by(id=club_id).first().name
+    output = []
+    for player in players:
+        player_data = {
+            'id': player.id,
+            'first_name': player.first_name,
+            'last_name': player.last_name,
+            'rating': player.rating,
+            'photo_url': player.photo_url,
+            'position': player.position,
+            'club_name': club_name  # Add the club name to the response
+        }
+        output.append(player_data)
+
+    # Log the entire response data, including the photo URLs
+    logger.info(f"Response data for club_id {club_id}: {output}")
+
+    logger.info(f"Found {len(players)} players for club_id: {club_id}")
+
     return jsonify(output)
+
+
+
+
 
 @app.route('/championships', methods=['GET'])
 def get_championships():
@@ -308,11 +378,34 @@ def get_championships():
     output = [{'id': champ.id, 'year': champ.year, 'division': champ.division} for champ in championships]
     return jsonify(output)
 
+
+
 @app.route('/championships/<int:championship_id>/matches', methods=['GET'])
 def get_matches(championship_id):
+    logger.info(f"Fetching matches for championship_id: {championship_id}")
+
     matches = Match.query.filter_by(championship_id=championship_id).all()
-    output = [{'id': match.id, 'date': match.date.strftime("%Y-%m-%d %H:%M:%S"), 'team_1_score': match.team_1_score, 'team_2_score': match.team_2_score} for match in matches]
+    output = []
+
+    for match in matches:
+        match_data = {
+            'id': match.id,
+            'date': match.date.strftime("%Y-%m-%d %H:%M:%S"),
+            'team_1_id': match.team_1_id,
+            'team_1_name': match.team_1.name,  # Assuming 'name' is a column in the Club model
+            'team_2_id': match.team_2_id,
+            'team_2_name': match.team_2.name,  # Assuming 'name' is a column in the Club model
+            'team_1_score': match.team_1_score,
+            'team_2_score': match.team_2_score
+        }
+        output.append(match_data)
+
+    logger.info(f"Found {len(matches)} matches for championship_id: {championship_id}")
+    logger.info(f"Match data: {output}")
+
     return jsonify(output)
+
+
 
 
 if __name__ == '__main__':
