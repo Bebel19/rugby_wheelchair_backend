@@ -183,24 +183,23 @@ def receive_data():
 # Endpoint pour récupérer les données de choc
 @app.route('/shocks', methods=['GET'])
 def get_shocks():
-    shocks = ShockData.query.all()
-    output = []
-    for shock in shocks:
-        shock_data = {
+    try:
+        shocks = ShockData.query.all()
+        output = [{
             'id': shock.id,
-            'sensorID': shock.sensorID,  # Inclure sensorID dans la réponse
+            'sensorID': shock.sensorID,
             'accelX': shock.accelX,
             'accelY': shock.accelY,
             'accelZ': shock.accelZ,
             'shockDetected': shock.shockDetected,
-            'timestamp': shock.timestamp
-        }
-        output.append(shock_data)
+            'timestamp': shock.timestamp.strftime("%Y-%m-%d %H:%M:%S")  # Formatting timestamp
+        } for shock in shocks]
 
-    # Log the action of fetching data
-    logger.info("Fetched all shocks data")
-
-    return jsonify(output)
+        logger.info("Fetched all shocks data")
+        return jsonify(output)
+    except Exception as e:
+        logger.error(f"Error fetching shocks data: {str(e)}")
+        abort(500, description="Internal Server Error")
 
 
 # Endpoint pour récupérer les données de choc par capteur spécifique
