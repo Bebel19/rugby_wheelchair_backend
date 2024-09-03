@@ -105,12 +105,13 @@ class Award(db.Model):
 
 class ShockData(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    sensorID = db.Column(db.String(50), nullable=False)  # Ajout du champ sensorID
+    sensorID = db.Column(db.String(50), nullable=False)  # Ensure this matches your front-end or data input source
     accelX = db.Column(db.Float, nullable=False)
     accelY = db.Column(db.Float, nullable=False)
     accelZ = db.Column(db.Float, nullable=False)
     shockDetected = db.Column(db.Boolean, nullable=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+
 
     def __repr__(self):
         return f'<Shock {self.id}: Sensor={self.sensorID}, X={self.accelX}, Y={self.accelY}, Z={self.accelZ}, Detected={self.shockDetected}>'
