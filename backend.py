@@ -116,11 +116,22 @@ class ShockData(db.Model):
     def __repr__(self):
         return f'<Shock {self.id}: Sensor={self.sensorID}, X={self.accelX}, Y={self.accelY}, Z={self.accelZ}, Detected={self.shockDetected}>'
 
+class TemperatureHumidityData(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    sensorID = db.Column(db.String(50), nullable=False)
+    temperature = db.Column(db.Float, nullable=False)
+    humidity = db.Column(db.Float, nullable=False)
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f'<TemperatureHumidityData {self.id}: Sensor={self.sensorID}, Temp={self.temperature}, Humidity={self.humidity}>'
+
 
 modes = [
     {'label': 'Current Game', 'active': True},
     {'label': 'Games', 'active': False},
     {'label': 'Players', 'active': False},
+    {'label': 'Sensor data', 'active': False},
     {'label': 'Select Table', 'active': False}
 ]
 
@@ -180,26 +191,69 @@ def receive_data():
         return jsonify({"message": "Request must be JSON"}), 400
 
 
+@app.route('/temperature_data', methods=['POST'])
+def receive_temperature_data():
+    if request.is_json:
+        data = request.get_json()
+
+        # Log the received data
+        logger.info(f"Received temperature and humidity data: {data}")
+
+        # Adapt to match the ESP32 data structure (A2302_Temperature, A2302_Humidity)
+        new_data = TemperatureHumidityData(
+            sensorID=data['sensorID'],
+            temperature=data['A2302_Temperature'],  # Match with ESP32 key
+            humidity=data['A2302_Humidity']  # Match with ESP32 key
+        )
+        db.session.add(new_data)
+        db.session.commit()
+
+        return jsonify({"message": "Temperature and humidity data received successfully"}), 200
+    else:
+        logger.warning("Request must be JSON")
+        return jsonify({"message": "Request must be JSON"}), 400
+
+
 # Endpoint pour récupérer les données de choc
 @app.route('/shocks', methods=['GET'])
 def get_shocks():
-    try:
-        shocks = ShockData.query.all()
-        output = [{
+    shocks = ShockData.query.all()
+    output = []
+    for shock in shocks:
+        shock_data = {
             'id': shock.id,
-            'sensorID': shock.sensorID,
+            'sensorID': shock.sensorID,  # Inclure sensorID dans la réponse
             'accelX': shock.accelX,
             'accelY': shock.accelY,
             'accelZ': shock.accelZ,
             'shockDetected': shock.shockDetected,
-            'timestamp': shock.timestamp.strftime("%Y-%m-%d %H:%M:%S")  # Formatting timestamp
-        } for shock in shocks]
+            'timestamp': shock.timestamp
+        }
+        output.append(shock_data)
 
-        logger.info("Fetched all shocks data")
-        return jsonify(output)
-    except Exception as e:
-        logger.error(f"Error fetching shocks data: {str(e)}")
-        abort(500, description="Internal Server Error")
+    # Log the action of fetching data
+    logger.info("Fetched all shocks data")
+
+    return jsonify(output)
+
+@app.route('/sensors', methods=['GET'])
+def get_sensors():
+    # Query temperature and shock sensor IDs
+    temperature_sensors = db.session.query(TemperatureHumidityData.sensorID).distinct().all()
+    shock_sensors = db.session.query(ShockData.sensorID).distinct().all()
+
+    # Log the raw data fetched from the database
+    logger.info(f"Fetched temperature sensors: {temperature_sensors}")
+    logger.info(f"Fetched shock sensors: {shock_sensors}")
+
+    # Flatten the sensor list and remove duplicates
+    all_sensors = list(set([sensor[0] for sensor in temperature_sensors + shock_sensors]))
+
+    # Log the final list of unique sensors
+    logger.info(f"All unique sensors: {all_sensors}")
+
+    return jsonify(all_sensors)
+
 
 
 # Endpoint pour récupérer les données de choc par capteur spécifique
@@ -223,6 +277,38 @@ def get_shocks_by_sensor(sensor_id):
     logger.info(f"Fetched shocks data for sensor {sensor_id}")
 
     return jsonify(output)
+
+
+@app.route('/sensor_data/<sensor_id>', methods=['GET'])
+def get_sensor_data(sensor_id):
+    temperature_data = TemperatureHumidityData.query.filter_by(sensorID=sensor_id).all()
+    shock_data = ShockData.query.filter_by(sensorID=sensor_id).all()
+
+    # Combine the data into a structured format where each entry has its associated timestamp
+    sensor_data = []
+
+    # Add temperature and humidity data
+    for data in temperature_data:
+        sensor_data.append({
+            'timestamp': data.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+            'temperature': data.temperature,
+            'humidity': data.humidity,
+            'shock': None  # No shock data for this timestamp
+        })
+
+    # Add shock data (filling in shock data where applicable)
+    for shock in shock_data:
+        sensor_data.append({
+            'timestamp': shock.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+            'temperature': None,  # No temperature data for this timestamp
+            'humidity': None,     # No humidity data for this timestamp
+            'shock': 1 if shock.shockDetected else 0
+        })
+
+    # Sort the data by timestamp to maintain chronological order
+    sensor_data = sorted(sensor_data, key=lambda x: x['timestamp'])
+    logger.info(f"Fetched shocks data from sensors dba {sensor_data}")
+    return jsonify(sensor_data)
 
 #Endpoint for video feed
 @app.route('/video_feed')
