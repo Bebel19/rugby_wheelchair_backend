@@ -126,6 +126,15 @@ class TemperatureHumidityData(db.Model):
     def __repr__(self):
         return f'<TemperatureHumidityData {self.id}: Sensor={self.sensorID}, Temp={self.temperature}, Humidity={self.humidity}>'
 
+# Assuming you have this model
+class HeartRateData(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    sensorID = db.Column(db.String(50), nullable=False)
+    BPM = db.Column(db.Float, nullable=False)
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f'<HeartRateData {self.sensorID}: BPM={self.BPM}, timestamp={self.timestamp}>'
 
 modes = [
     {'label': 'Current Game', 'active': True},
@@ -214,6 +223,49 @@ def receive_temperature_data():
         return jsonify({"message": "Request must be JSON"}), 400
 
 
+@app.route('/heartrate_data', methods=['POST'])
+def receive_heartrate_data():
+    if request.is_json:
+        data = request.get_json()
+
+        # Log the received data
+        logger.info(f"Received heart rate data: {data}")
+
+        # Create a new HeartrateData entry
+        new_data = HeartRateData(
+            sensorID=data['sensorID'],
+            BPM=data['BPM']  # Match with ESP32 key
+        )
+        db.session.add(new_data)
+        db.session.commit()
+
+        return jsonify({"message": "Heart rate data received successfully"}), 200
+    else:
+        logger.warning("Request must be JSON")
+        return jsonify({"message": "Request must be JSON"}), 400
+
+
+@app.route('/heartrate_data/<sensor_id>', methods=['GET'])
+def get_heart_rate_data(sensor_id):
+    # Query heart rate data for the specific sensor
+    heart_rates = HeartRateData.query.filter_by(sensorID=sensor_id).all()
+
+    # Prepare the output
+    output = []
+    for hr in heart_rates:
+        hr_data = {
+            'sensorID': hr.sensorID,
+            'BPM': hr.BPM,
+            'timestamp': hr.timestamp
+        }
+        output.append(hr_data)
+
+    # Log the action
+    logger.info(f"Fetched heart rate data for sensor {sensor_id}")
+
+    return jsonify(output)
+
+
 # Endpoint pour récupérer les données de choc
 @app.route('/shocks', methods=['GET'])
 def get_shocks():
@@ -280,35 +332,57 @@ def get_shocks_by_sensor(sensor_id):
 
 
 @app.route('/sensor_data/<sensor_id>', methods=['GET'])
-def get_sensor_data(sensor_id):
-    temperature_data = TemperatureHumidityData.query.filter_by(sensorID=sensor_id).all()
-    shock_data = ShockData.query.filter_by(sensorID=sensor_id).all()
+def get_sensor_data_by_sensor(sensor_id):
+    # Fetch shock data
+    shocks = ShockData.query.filter_by(sensorID=sensor_id).all()
 
-    # Combine the data into a structured format where each entry has its associated timestamp
-    sensor_data = []
+    # Fetch temperature and humidity data
+    temperature_humidity_data = TemperatureHumidityData.query.filter_by(sensorID=sensor_id).all()
 
-    # Add temperature and humidity data
-    for data in temperature_data:
-        sensor_data.append({
-            'timestamp': data.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
-            'temperature': data.temperature,
-            'humidity': data.humidity,
-            'shock': None  # No shock data for this timestamp
-        })
+    # Fetch heart rate data
+    heart_rate_data = HeartRateData.query.filter_by(sensorID=sensor_id).all()
 
-    # Add shock data (filling in shock data where applicable)
-    for shock in shock_data:
-        sensor_data.append({
-            'timestamp': shock.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
-            'temperature': None,  # No temperature data for this timestamp
-            'humidity': None,     # No humidity data for this timestamp
-            'shock': 1 if shock.shockDetected else 0
-        })
+    output = []
 
-    # Sort the data by timestamp to maintain chronological order
-    sensor_data = sorted(sensor_data, key=lambda x: x['timestamp'])
-    logger.info(f"Fetched shocks data from sensors dba {sensor_data}")
-    return jsonify(sensor_data)
+    # Combine the data from each query
+    for shock in shocks:
+        shock_data = {
+            'timestamp': shock.timestamp,
+            'shock': shock.shockDetected,
+            'temperature': None,
+            'humidity': None,
+            'BPM': None
+        }
+        output.append(shock_data)
+
+    for temp_humidity in temperature_humidity_data:
+        temp_humidity_data = {
+            'timestamp': temp_humidity.timestamp,
+            'temperature': temp_humidity.temperature,
+            'humidity': temp_humidity.humidity,
+            'shock': None,
+            'BPM': None
+        }
+        output.append(temp_humidity_data)
+
+    for heart_rate in heart_rate_data:
+        heart_rate_data = {
+            'timestamp': heart_rate.timestamp,
+            'BPM': heart_rate.BPM,
+            'shock': None,
+            'temperature': None,
+            'humidity': None
+        }
+        output.append(heart_rate_data)
+
+    # Sort the output list by timestamp to ensure it's in chronological order
+    output.sort(key=lambda x: x['timestamp'])
+
+    # Log the action of fetching data for a specific sensor
+    logger.info(f"Fetched all sensor data for sensor {sensor_id}")
+
+    return jsonify(output)
+
 
 #Endpoint for video feed
 @app.route('/video_feed')
