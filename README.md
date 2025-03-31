@@ -42,7 +42,7 @@ Projet présenté lors d'une **summer school** avec la participation de l'UPSSIT
 
 ## 🌍 Lien vers l’interface associée
 
-Frontend Angular : [rugby_wheelchair_frontend](https://github.com/Bebel19/rugby_wheelchair_frontend)
+Frontend Angular : [rugby_wheelchair_frontend]([https://github.com/Bebel19/rugby_wheelchair_frontend](https://github.com/GuyBorel/interface_rugby_wheelchair_FE))
 
 ---
 
