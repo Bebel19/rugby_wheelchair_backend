@@ -5,7 +5,7 @@
 
 Ce backend fait partie du projet de **coaching stratégique pour le rugby en fauteuil**, conçu dans une approche de design thinking durant l'année 2024. Il est destiné à collecter, stocker et restituer des données issues de capteurs embarqués sur les joueurs (accélération, fréquence cardiaque, température...) afin d'alimenter une interface de visualisation pour les coachs et analystes.
 
-Projet présenté lors d'une **summer school** avec la participation de l'UPSSITECH, l'université d'Ostfalia, l'université de Wuerzburg et l'université technologique de Munster.
+Projet présenté lors d'une **summer school** pour le Stade Toulousain handisport  avec la participation de l'UPSSITECH, l'université d'Ostfalia, l'université de Wuerzburg et l'université technologique de Munster.
 ---
 
 ## 🚀 Objectif
