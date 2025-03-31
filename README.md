@@ -1,7 +1,7 @@
 # Backend Rugby Fauteuil – Projet de Coaching Stratégique
 
 ![Flask](https://img.shields.io/badge/built%20with-flask-red)
-![Status](https://img.shields.io/badge/status-en%20cours-yellow)
+![Status](https://img.shields.io/badge/status-terminé-yellow)
 
 Ce backend fait partie du projet de **coaching stratégique pour le rugby en fauteuil**, conçu dans une approche de design thinking durant l'année 2024. Il est destiné à collecter, stocker et restituer des données issues de capteurs embarqués sur les joueurs (accélération, fréquence cardiaque, température...) afin d'alimenter une interface de visualisation pour les coachs et analystes.
 
