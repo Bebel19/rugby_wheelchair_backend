@@ -19,9 +19,9 @@ Projet présenté lors d'une **summer school** avec la participation de l'UPSSIT
 ## 🔍 Fonctionnalités principales
 
 - Réception de données capteurs via POST :
-  - **Chocs** : accéléromètre (X, Y, Z)
-  - **Température & humidité** : capteur A2302
-  - **Rythme cardiaque** : BPM
+  - **Chocs** : accéléromètre
+  - **Température & humidité** 
+  - **Rythme cardiaque** 
 - Stockage via SQLAlchemy dans une base SQLite
 - Gestion des entités : Clubs, Joueurs, Championnats, Matchs, Statistiques
 - Modes d’affichage configurables via WebSocket
