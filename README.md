@@ -47,7 +47,7 @@ Frontend Angular : [interface_rugby_wheelchair_FE](https://github.com/GuyBorel/i
 
 ## ✅ Statut
 
-Ce projet est **fonctionnel** mais encore en cours de test. Il peut être déployé localement pour collecter les données via ESP32 et les consulter via l'interface frontend.
+Ce projet est **fonctionnel**. Il peut être déployé localement pour collecter les données via ESP32 et les consulter via l'interface frontend.
 
 ---
 
